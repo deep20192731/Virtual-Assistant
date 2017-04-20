@@ -138,21 +138,28 @@ def get_matching_photo_details(image):
 	
 	# get the encodings of this photo
 	test_encodings = np.array(get_face_encodings(image))
+	if (len(test_encodings) < 1):
+		return 'user not found'
 	matches = compare_face_encodings(encodings_array, test_encodings)
 	print("matches ", matches)
 	
+	match_found = False
 	counter = 0
 	for match in matches:
 		counter = counter + 1
 		if match:
+			match_found = True
 			print("found a match")
 			break
 	
-	if counter == 0:
+	if not match_found:
 		print("no user at all")
 		return 'user not found'
 	else:
 		# return info_array[counter]
+		print("counter = ", counter)
+		if counter < len(info_array):
+			print(info_array[counter])
 		return 'user found'	
 			
 
