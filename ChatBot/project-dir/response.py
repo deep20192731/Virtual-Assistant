@@ -45,6 +45,7 @@ def request(host, path, bearer_token, url_params=None):
 
     response = requests.request('GET', url, headers=headers, params=url_params)
 
+    
     return response.json()
 
 def search(bearer_token, term, location):
@@ -54,6 +55,27 @@ def search(bearer_token, term, location):
         'limit': 3
     }
     return request(API_HOST, SEARCH_PATH, bearer_token, url_params=url_params)
+
+def callYelpSearchAPI(entity, bearer_token, DEFAULT_LOCATION):
+    places = None
+    businessURLS = []
+    try:
+        places = search(bearer_token, entity, DEFAULT_LOCATION)
+        places = places['businesses']
+        assert len(places) == 3
+            
+        for index in range(len(places)):
+            businessURLS.append(places[index]['url'])
+    except:
+        pass
+    return businessURLS
+        
+def modifyResponseWithResult(hitFoodAPI, outputJson, bearer_token, DEFAULT_LOCATION):
+    if(hitFoodAPI == False): return outputJson
+    else: 
+        outputJson['urls'] = callYelpSearchAPI(outputJson['context']['previous_entity'], outputJson, bearer_token, DEFAULT_LOCATION)
+        return outputJson
+        
 
 def lambda_handler(event, context):
     DEFAULT_LOCATION = 'New York, NY'
@@ -66,29 +88,49 @@ def lambda_handler(event, context):
       version='2017-04-21',
       url='https://gateway.watsonplatform.net/conversation/api')
     
-    inputText = 'I want to eat noodles!'
-    response = conversation.message(workspace_id=os.environ['workspaceid'],
-                            message_input={'text': inputText})
+    bodyJson = event['body-json']
+    inputText = bodyJson['text']
+    context = bodyJson['context']
 
+    response = conversation.message(workspace_id=os.environ['workspaceid'],
+                            message_input={'text': inputText}, context=context)
+
+    #return response
+    context = response['context']
+    saveEntity = context['save_entity']
+    hitFoodAPI = context['get_food']
+    
+    currentEntity = None
+    try: currentEntity = context['current_entity']
+    except: pass
+    
     outputText = response['output']['text'][0]
     entityObj = response['entities']
     
-    if(entityObj == []):
-        return outputText
-    else:
-        location = entityObj[0]['location']
-        start, end = int(location[0]), int(location[1])
-        entity = inputText[start:end]
+    # Build JSON
+    outputJson = {}
+    
+    ifEntityInCurrentResponse = (len(entityObj) > 0)
+    isEntityPresentBefore = (currentEntity is not None)
+    
+    if(saveEntity and (ifEntityInCurrentResponse or isEntityPresentBefore)):
+        if(ifEntityInCurrentResponse):
+            location = entityObj[0]['location']
+            start, end = int(location[0]), int(location[1])
+            currentEntity = inputText[start:end]
         
-        places = None
-        try:
-            places = search(bearer_token, entity, DEFAULT_LOCATION)
-            places = places['businesses']
-            assert len(places) == 3
+        context['current_entity'] = currentEntity
+        context['save_entity'] = False
+        
+        if(hitFoodAPI):
+            urls = callYelpSearchAPI(currentEntity, bearer_token, DEFAULT_LOCATION)
+            context['get_food'] = False
+            if(len(urls) == 0): 
+                outputText = "Sorry! There was some problem in fetching the restaurants. Please start again"
+                context = {}
+            else: context['urls'] = urls
             
-            outputText += "\n"
-            for index in range(len(places)):
-                outputText += str(index+1) + " " + places[index]['url'] + "\n"
-            return outputText[:len(outputText)-1]
-        except:
-            return "Sorry! I was not able to retrieve what you wanted! Pleae enter text again so that I can try again!"
+    outputJson['text'] = outputText
+    outputJson['context'] = context
+    #return response
+    return outputJson
