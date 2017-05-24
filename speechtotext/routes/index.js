@@ -4,7 +4,7 @@ var multer = require('multer');
 var fs=require('fs');
 var upload = multer({ dest: './files/' });
 var request = require('request');
-function callffmpeg(fil,type,callback){            
+function callffmpeg(fil,lang,type,callback){            
 //    var new_name='ip_'+new Date().getTime()+'.flac';
 //    fs.rename('./files/'+fil,'./files/'+new_name);
 //    fil=new_name
@@ -23,7 +23,7 @@ function callffmpeg(fil,type,callback){
                         if (err) callback(new Error(err));
                     });
                    console.log(file) 
-                   syncRecognize (file,type,callback)
+                   syncRecognize (file,lang,type,callback)
                 }else{
                     console.log(error)
                     callback(new Error(error))
@@ -39,17 +39,17 @@ function callffmpeg(fil,type,callback){
         callback(new Error(e.msg))
     }
 }
-function syncRecognize (filename,type,callback) {
+function syncRecognize (filename,lang,type,callback) {
 
   const config = {
       projectId: 'speech-test',
       keyFilename: './speech-test-5b2c2cb2f139.json'
   };
   const speech =require('@google-cloud/speech')(config);
-  const languageCode = 'en-US';
+  //const languageCode = 'en-US';
 
   const request = {
-    languageCode: languageCode
+    languageCode: lang
   };
 
   speech.recognize(filename, request)
@@ -61,7 +61,15 @@ function syncRecognize (filename,type,callback) {
 });
       console.log(`Transcription: ${transcription}`);
       if(type=='speech'){
-        get_tone(transcription,callback);    
+            if(lang=='en-US'){
+                get_tone(transcription,callback);      
+            }
+              else{
+                  result={
+                      transcript:transcription
+                  }
+               callback(null,result);   
+              }
       }else{
           botrequest(transcription,callback);
       }   
@@ -164,7 +172,15 @@ function asyncOperation(file_det,type,callback){
 //        if (err)
 //        callback(new Error(err));
 //    });
-    callffmpeg(file_det['filename'],type,callback);
+    lang='en-US'
+    if(file_det['originalname'].includes('ENG_')){
+        lang='en-US'
+    }else if(file_det['originalname'].includes('ARA_')){
+        lang='ar-AE'
+    }else if(file_det['originalname'].includes('HIN_')){
+        lang='hi-IN'
+    }
+    callffmpeg(file_det['filename'],lang,type,callback);
 }
 
 
@@ -184,6 +200,7 @@ router.post('/bot', upload.any(),function(req,res,next){
 
 router.post('/speech_analysis', upload.any(),function(req,res,next){
     var file_det=req.files[0];
+    console.log(file_det)
     asyncOperation (file_det,'speech',function ( err, response ) {
         res.send(response);
     });
